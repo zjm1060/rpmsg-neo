@@ -35,7 +35,8 @@ struct rpmsgtty_port
 {
     struct tty_port		port;
     spinlock_t		rx_lock;
-    struct rpmsg_channel   *rpmsg_chnl;
+//    struct rpmsg_channel   *rpmsg_chnl;
+    struct rpmsg_channel_info rpmsg_chnl;
     struct rpmsg_endpoint   *ept;
     char tx_buff[RPMSG_MAX_SIZE]; /* buffer to keep the message to send */
     int endpt;
@@ -44,7 +45,7 @@ struct rpmsgtty_port
 
 static struct rpmsgtty_port rpmsg_tty_port;
 
-static void rpmsg_tty_cb(struct rpmsg_channel *rpdev, void *data, int len,
+static int rpmsg_tty_cb(struct rpmsg_device *rpdev, void *data, int len,
                          void *priv, u32 src)
 {
     int space;
@@ -53,7 +54,7 @@ static void rpmsg_tty_cb(struct rpmsg_channel *rpdev, void *data, int len,
 
     /* flush the recv-ed none-zero data to tty node */
     if (len == 0)
-        return;
+        return 0;
  /*
     pr_info("%s lenrcved=%d\n", __FUNCTION__, len);
     print_hex_dump(KERN_DEBUG, __func__, DUMP_PREFIX_NONE, 16, 1,
@@ -66,7 +67,7 @@ static void rpmsg_tty_cb(struct rpmsg_channel *rpdev, void *data, int len,
     {
         dev_err(&rpdev->dev, "No memory for tty_prepare_flip_string\n");
         spin_unlock_bh(&cport->rx_lock);
-        return;
+        return 0;
     }
 
     if( space != len)
@@ -75,6 +76,8 @@ static void rpmsg_tty_cb(struct rpmsg_channel *rpdev, void *data, int len,
     memcpy(cbuf, data, space);
     tty_flip_buffer_push(&cport->port);
     spin_unlock_bh(&cport->rx_lock);
+
+    return 0;
 }
 
 static struct tty_port_operations  rpmsgtty_port_ops = { };
@@ -101,7 +104,7 @@ static int rpmsgtty_write(struct tty_struct *tty, const unsigned char *buf,
     const unsigned char *tbuf;
     struct rpmsgtty_port *rptty_port = container_of(tty->port,
                                        struct rpmsgtty_port, port);
-    struct rpmsg_channel *rpmsg_chnl = rptty_port->rpmsg_chnl;
+    struct rpmsg_endpoint *rpmsg_chnl = rptty_port->ept;
 
     if (NULL == buf)
     {
@@ -120,15 +123,17 @@ pr_info("%s lentx=%d\n", __FUNCTION__, total);
 */
         /* send a message to our remote processor */
         ret = rpmsg_sendto(rpmsg_chnl, (void *)tbuf,
-                           count > RPMSG_MAX_SIZE ? RPMSG_MAX_SIZE : count, rptty_port->endpt);
+                           count > RPMSG_MAX_SIZE ? RPMSG_MAX_SIZE : count, RPMSG_TTY_ENPT);
         if (ret)
         {
-            dev_err(&rpmsg_chnl->dev, "rpmsg_send failed: %d\n", ret);
+        	pr_info("rpmsg_send failed: %d\n", ret);
+            dev_err(&rpmsg_chnl->rpdev->dev, "rpmsg_send failed: %d\n", ret);
             return ret;
         }
 
         if (count > RPMSG_MAX_SIZE)
         {
+        	pr_info("next page\n");
             count -= RPMSG_MAX_SIZE;
             tbuf += RPMSG_MAX_SIZE;
         }
@@ -178,7 +183,7 @@ static int rpmsg_neo_tty_remove(void )
 }
 
 
-int rpmsg_neo_tty(struct rpmsg_channel *rpmsg_chnl,rpmsg_neo_remove_t *remove_func )
+int rpmsg_neo_tty(struct rpmsg_device *rpdev,rpmsg_neo_remove_t *remove_func )
 {
     int err = 0;
     struct rpmsgtty_port *cport = &rpmsg_tty_port;
@@ -187,13 +192,14 @@ int rpmsg_neo_tty(struct rpmsg_channel *rpmsg_chnl,rpmsg_neo_remove_t *remove_fu
 
     memset(cport, 0, sizeof(rpmsg_tty_port));
 
-    cport->rpmsg_chnl = rpmsg_chnl;
-    cport->endpt = RPMSG_TTY_ENPT;
+//    cport->rpmsg_chnl = rpmsg_chnl;
+//    cport->endpt = RPMSG_TTY_ENPT;
+    cport->rpmsg_chnl.src = RPMSG_TTY_ENPT;
 
-    cport->ept = rpmsg_create_ept(cport->rpmsg_chnl,
+    cport->ept = rpmsg_create_ept(rpdev,
                                   rpmsg_tty_cb,
                                   cport,
-                                  cport->endpt);
+                                  cport->rpmsg_chnl);
     if (!cport->ept)
     {
         pr_err("ERROR: %s %s %d Failed to create proxy service endpoint.\n", __FILE__, __FUNCTION__, __LINE__);
@@ -224,7 +230,7 @@ int rpmsg_neo_tty(struct rpmsg_channel *rpmsg_chnl,rpmsg_neo_remove_t *remove_fu
     rpmsgtty_driver->type = TTY_DRIVER_TYPE_CONSOLE;
     rpmsgtty_driver->init_termios = tty_std_termios;
   //  rpmsgtty_driver->init_termios.c_oflag = OPOST | OCRNL | ONOCR | ONLRET;
-rpmsgtty_driver->init_termios.c_cflag |= CLOCAL;
+    rpmsgtty_driver->init_termios.c_cflag |= CLOCAL;
 
     tty_set_operations(rpmsgtty_driver, &imxrpmsgtty_ops);
     tty_port_link_device(&cport->port, rpmsgtty_driver, 0);

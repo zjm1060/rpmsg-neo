@@ -48,7 +48,7 @@ struct _rpmsg_params
     struct mutex sync_lock;
     struct kfifo rpmsg_kfifo;
     int block_flag;
-    struct rpmsg_channel *rpmsg_chnl;
+    struct rpmsg_channel_info rpmsg_chnl;
     struct rpmsg_endpoint *ept;
     char tx_buff[RPMSG_KFIFO_SIZE]; /* buffer to keep the message to send */
     u32 endpt;
@@ -66,10 +66,10 @@ struct _rpmsg_device
 static int rpmsg_dev_open(struct inode *inode, struct file *filp)
 {
     /* Initialize rpmsg instance with device params from inode */
-    struct _rpmsg_device *_prpmsg_device = (struct _rpmsg_device *)filp->private_data;
-    struct _rpmsg_params *local = ( struct _rpmsg_params *)&_prpmsg_device->rpmsg_params;
+//    struct _rpmsg_device *_prpmsg_device = (struct _rpmsg_device *)filp->private_data;
+//    struct _rpmsg_params *local = ( struct _rpmsg_params *)&_prpmsg_device->rpmsg_params;
 
-    local;
+//    local;
 
     return nonseekable_open(inode, filp);
 }
@@ -95,10 +95,10 @@ static ssize_t rpmsg_dev_write(struct file *filp,
         return -1;
     }
 
-    err = rpmsg_sendto(local->rpmsg_chnl,
+    err = rpmsg_sendto(local->ept,
                        local->tx_buff,
                        size,
-                       local->endpt);
+					   RPMSG_PROXY_ENDPOINT);
     if (err)
     {
         pr_err("rpmsg_sendto (size = %d) error: %d\n", size, err);
@@ -227,7 +227,7 @@ static int rpmsg_dev_release(struct inode *inode, struct file *p_file)
     return 0;
 }
 
-static void rpmsg_proxy_dev_ept_cb(struct rpmsg_channel *rpdev, void *data,
+static int rpmsg_proxy_dev_ept_cb(struct rpmsg_device *rpdev, void *data,
                                    int len, void *priv, u32 src)
 {
 
@@ -237,7 +237,7 @@ static void rpmsg_proxy_dev_ept_cb(struct rpmsg_channel *rpdev, void *data,
     if (kfifo_avail(&local->rpmsg_kfifo) < len)
     {
         mutex_unlock(&local->sync_lock);
-        return;
+        return 0;
     }
 
     kfifo_in(&local->rpmsg_kfifo, data, (unsigned int)len);
@@ -247,6 +247,8 @@ static void rpmsg_proxy_dev_ept_cb(struct rpmsg_channel *rpdev, void *data,
     /* Wake up any blocking contexts waiting for data */
     local->block_flag = 1;
     wake_up_interruptible(&local->usr_wait_q);
+
+    return 0;
 
 }
 static const struct file_operations rpmsg_dev_fops =
@@ -268,7 +270,7 @@ static struct _rpmsg_device rpmsg_miscdevice0 =
     .device.minor = MISC_DYNAMIC_MINOR,
     .device.name  = "rpmsg0",
     .device.fops = &rpmsg_dev_fops,
-    .endpt = RPMSG_PROXY_ENDPOINT,
+//    .endpt = RPMSG_PROXY_ENDPOINT,
 
 };
 
@@ -281,7 +283,7 @@ static int rpmsg_neo_proxy_remove(void )
 
 }
 
-static int init_neo_proxy(struct _rpmsg_params *local, struct rpmsg_channel *rpmsg_chnl)
+static int init_neo_proxy(struct _rpmsg_params *local, struct rpmsg_device *rpmsg_chnl)
 {
     int status =0;
 
@@ -301,13 +303,14 @@ static int init_neo_proxy(struct _rpmsg_params *local, struct rpmsg_channel *rpm
         goto error0;
     }
 
-    local->rpmsg_chnl = rpmsg_chnl;
+//    local->rpmsg_chnl = rpmsg_chnl;
+    local->rpmsg_chnl.src = RPMSG_PROXY_ENDPOINT;
     local->block_flag = 0;
 
-    local->ept = rpmsg_create_ept(local->rpmsg_chnl,
+    local->ept = rpmsg_create_ept(rpmsg_chnl,
                                   rpmsg_proxy_dev_ept_cb,
                                   local,
-                                  local->endpt);
+                                  local->rpmsg_chnl);
     if (!local->ept)
     {
         pr_err("ERROR: %s %d Failed to create endpoint.\n",  __FUNCTION__, __LINE__);
@@ -327,7 +330,7 @@ out:
     return 0;
 }
 
-int rpmsg_neo_proxy(struct rpmsg_channel *rpmsg_chnl,rpmsg_neo_remove_t *remove_func )
+int rpmsg_neo_proxy(struct rpmsg_device *rpmsg_chnl,rpmsg_neo_remove_t *remove_func )
 {
     int err = 0;
 

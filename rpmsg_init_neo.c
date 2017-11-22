@@ -18,7 +18,7 @@
 
 
 
-#define RPMSG_MAX_SIZE		(512 - sizeof(struct rpmsg_hdr))
+#define RPMSG_MAX_SIZE		(512)
 #define MSG		"hello world!"
 
 
@@ -26,29 +26,31 @@
 struct _rpmsg_dev_params
 {
     struct device *rpmsg_dev;
-    struct rpmsg_channel *rpmsg_chnl;
-    char tx_buff[RPMSG_MAX_SIZE];
+    struct rpmsg_endpoint *rpmsg_chnl;
+//    char tx_buff[RPMSG_MAX_SIZE];
     rpmsg_neo_remove_t remove_proxy;
     rpmsg_neo_remove_t remove_tty;
     rpmsg_neo_remove_t remove_ethernet;
 
 };
 
-static void rpmsg_proxy_dev_rpmsg_drv_cb(struct rpmsg_channel *rpdev, void *data,
-        int len, void *priv, u32 src)
+static int rpmsg_proxy_dev_rpmsg_drv_cb(struct rpmsg_device *rpdev, void *data, int len,
+		void *priv, u32 src)
 {
 
     pr_err("ERROR: %s %d\n",  __FUNCTION__, __LINE__);
+
+    return 0;
 }
 
 
-static int rpmsg_proxy_dev_rpmsg_drv_probe(struct rpmsg_channel *rpdev);
+static int rpmsg_proxy_dev_rpmsg_drv_probe(struct rpmsg_device *rpdev);
 
-static void rpmsg_proxy_dev_rpmsg_drv_remove(struct rpmsg_channel *rpdev);
+static void rpmsg_proxy_dev_rpmsg_drv_remove(struct rpmsg_device *rpdev);
 
 static struct rpmsg_device_id rpmsg_proxy_dev_drv_id_table[] =
 {
-    { .name = "rpmsg-openamp-demo-channel" },
+    { .name = "rpmsg-virtual-tty-channel" },
     {},
 };
 
@@ -62,7 +64,7 @@ static struct rpmsg_driver rpmsg_proxy_dev_drv =
     .callback = rpmsg_proxy_dev_rpmsg_drv_cb,
 };
 
-static int rpmsg_proxy_dev_rpmsg_drv_probe(struct rpmsg_channel *rpdev)
+static int rpmsg_proxy_dev_rpmsg_drv_probe(struct rpmsg_device *rpdev)
 {
     struct _rpmsg_dev_params *local;
     int err=0;
@@ -86,7 +88,7 @@ static int rpmsg_proxy_dev_rpmsg_drv_probe(struct rpmsg_channel *rpdev)
     * send a message to our remote processor, and tell remote
      * processor about this channel
      */
-    err = rpmsg_send(rpdev, MSG, strlen(MSG));
+    err = rpmsg_send(rpdev->ept, MSG, strlen(MSG));
     if (err)
     {
         dev_err(&rpdev->dev, "rpmsg_send failed: %d\n", err);
@@ -95,21 +97,21 @@ static int rpmsg_proxy_dev_rpmsg_drv_probe(struct rpmsg_channel *rpdev)
 
     memset(local, 0x0, sizeof(struct _rpmsg_dev_params));
 
-    local->rpmsg_chnl = rpdev;
+    local->rpmsg_chnl = rpdev->ept;
 
     dev_set_drvdata(&rpdev->dev, local);
 
-            pr_info("INFO: %s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+    pr_info("INFO: %s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 
-    if ( rpmsg_neo_proxy(local->rpmsg_chnl, &local->remove_proxy) || local->remove_proxy==NULL)
+    if ( rpmsg_neo_proxy(rpdev, &local->remove_proxy) || local->remove_proxy==NULL)
     {
         dev_err(&rpdev->dev, "Failed: rpmsg_neo_proxy\n");
         goto error2;
     }
-
+//
     pr_info(" %s %d\n",  __FUNCTION__, __LINE__);
 
-    if ( rpmsg_neo_tty(local->rpmsg_chnl, &local->remove_tty) ||  local->remove_tty==NULL)
+    if ( rpmsg_neo_tty(rpdev, &local->remove_tty) ||  local->remove_tty==NULL)
     {
         dev_err(&rpdev->dev, "Failed: rpmsg_neo_tty\n");
 
@@ -119,8 +121,8 @@ static int rpmsg_proxy_dev_rpmsg_drv_probe(struct rpmsg_channel *rpdev)
         goto error2;
 
     }
-    
-    if ( rpmsg_neo_ethernet(local->rpmsg_chnl, &local->remove_ethernet) ||  local->remove_ethernet==NULL)
+//
+    if ( rpmsg_neo_ethernet(rpdev, &local->remove_ethernet) ||  local->remove_ethernet==NULL)
     {
         dev_err(&rpdev->dev, "Failed: rpmsg_neo_ethernet\n");
 
@@ -129,11 +131,11 @@ static int rpmsg_proxy_dev_rpmsg_drv_probe(struct rpmsg_channel *rpdev)
 
         if(local->remove_tty)
             local->remove_tty();
-        
+
         goto error2;
 
-    }    
-   
+    }
+//
     goto out;
 error2:
     return -ENODEV;
@@ -141,10 +143,10 @@ out:
     return 0;
 }
 
-static void rpmsg_proxy_dev_rpmsg_drv_remove(struct rpmsg_channel *rpdev)
+static void rpmsg_proxy_dev_rpmsg_drv_remove(struct rpmsg_device *rpdev)
 {
-    struct _rpmsg_device *local = dev_get_drvdata(&rpdev->dev);
-    local;
+//    struct _rpmsg_device *local = dev_get_drvdata(&rpdev->dev);
+//    local;
 
 }
 
@@ -169,6 +171,6 @@ static void __exit rpmsg_exit(void)
 module_init(rpmsg_init);
 module_exit(rpmsg_exit);
 
-MODULE_AUTHOR("Tim Michals <tcmichals@gmail.com>");
+MODULE_AUTHOR("zjm1060@163.com");
 MODULE_DESCRIPTION("rpmsg proxy user access driver");
 MODULE_LICENSE("GPL v2");

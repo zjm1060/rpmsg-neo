@@ -54,13 +54,13 @@
 struct _rpmsg_dev_params {
 
         struct device *rpmsg_dev;
-        struct rpmsg_channel *rpmsg_chnl;
+        struct rpmsg_channel_info rpmsg_chnl;
         struct rpmsg_endpoint *ept;
         char tx_buff[MAX_RPMSG_BUFF_SIZE]; /* buffer to keep the message to send */
         struct net_device_stats stats;
         struct net_device *dev;
         spinlock_t lock;
-        int endpt;
+//        int endpt;
 };
 
 
@@ -93,10 +93,10 @@ static netdev_tx_t rpmsg_ether_xmit(struct sk_buff *skb,
   
     spin_lock_bh(&priv->lock);
 
-    err = rpmsg_trysendto(priv->rpmsg_chnl,
+    err = rpmsg_trysendto(priv->ept,
                           skb->data, 
                           len, 
-                          priv->endpt);
+						  ETHERNET_ENDPOINT);
     
     spin_unlock_bh(&priv->lock);
 
@@ -180,7 +180,7 @@ static const struct net_device_ops rpmsg_netdev_ops = {
 };
 
 
-static void rpmsg_ethernet_dev_ept_cb(struct rpmsg_channel *rpdev, void *data,
+static int rpmsg_ethernet_dev_ept_cb(struct rpmsg_device *rpdev, void *data,
                                         int len, void *priv, u32 src)
 {
 
@@ -203,16 +203,17 @@ static void rpmsg_ethernet_dev_ept_cb(struct rpmsg_channel *rpdev, void *data,
        spin_unlock_bh(&local->lock);
 
 
-        return;
+        return 0;
 }
 
 
 static int rpmsg_neo_ethernet_remove(void )
 {
  //FIX up   unregister_rpmsg_driver(&rpmsg_ethernet_dev_drv);
+	return 0;
 }
 
-int rpmsg_neo_ethernet(struct rpmsg_channel *rpmsg_chnl,
+int rpmsg_neo_ethernet(struct rpmsg_device *rpdev,
                        rpmsg_neo_remove_t *remove_func  )
 {
 
@@ -243,16 +244,16 @@ int rpmsg_neo_ethernet(struct rpmsg_channel *rpmsg_chnl,
     rpmsg_read_mac_addr(rpmsg_netdev);
 
   // call 
-    priv->rpmsg_chnl = rpmsg_chnl;
-    priv->endpt = ETHERNET_ENDPOINT;
+    priv->rpmsg_chnl.src = ETHERNET_ENDPOINT;
+//    priv->endpt = ETHERNET_ENDPOINT;
     
    spin_lock_init(&priv->lock);
 
     
-    priv->ept = rpmsg_create_ept(priv->rpmsg_chnl,
+    priv->ept = rpmsg_create_ept(rpdev,
                                  rpmsg_ethernet_dev_ept_cb,
                                   priv,
-                                  priv->endpt);
+								  priv->rpmsg_chnl);
 
 
     if (!priv->ept)

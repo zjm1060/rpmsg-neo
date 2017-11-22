@@ -1,9 +1,9 @@
 
 
 obj-m += rpmsg_neo.o
-rpmsg_neo-objs:= rpmsg_neoproxy.o rpmsg_neo_tty.o rpmsg_init_neo.o rpmsg_ethernet.o
+rpmsg_neo-objs:= rpmsg_init_neo.o rpmsg_neo_tty.o rpmsg_ethernet.o rpmsg_neoproxy.o
 
-KDIR  := /lib/modules/$(shell uname -r)/build
+KDIR  := /home/user/work/imx6/linux-imx
 PWD   := $(shell pwd)
 
 default:
